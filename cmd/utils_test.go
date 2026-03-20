@@ -721,3 +721,84 @@ func TestNormalizeBasePath(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestBodyUsesMediaTypeExampleForReferencedObjectSchema(t *testing.T) {
+	specPath := filepath.Join("..", "tests", "test_request_body_media_type_example.yaml")
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Skipf("Test spec not found: %v", err)
+		return
+	}
+
+	spec := SafelyUnmarshalSpec(data)
+	if spec == nil {
+		t.Fatal("Failed to unmarshal spec")
+	}
+
+	paths, ok := spec["paths"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected paths in spec")
+	}
+
+	activityPath, ok := paths["/activity"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected /activity path")
+	}
+
+	postOp, ok := activityPath["post"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected POST operation")
+	}
+
+	reqBody, ok := postOp["requestBody"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected requestBody")
+	}
+
+	content, ok := reqBody["content"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected requestBody content")
+	}
+
+	jsonContent, ok := content["application/json"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected application/json content")
+	}
+
+	mediaTypeExample := ExtractMediaTypeExample(jsonContent)
+	if mediaTypeExample == nil {
+		t.Fatal("Expected media type example to be extracted")
+	}
+
+	exampleMap, ok := mediaTypeExample.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected media type example to be an object, got %T", mediaTypeExample)
+	}
+
+	if exampleMap["username"] != "a.b.c" {
+		t.Errorf("Expected username from media type example, got %v", exampleMap["username"])
+	}
+	if exampleMap["startDate"] != "2026-01-01" {
+		t.Errorf("Expected startDate from media type example, got %v", exampleMap["startDate"])
+	}
+	if exampleMap["endDate"] != "2026-01-21" {
+		t.Errorf("Expected endDate from media type example, got %v", exampleMap["endDate"])
+	}
+
+	if schema, ok := jsonContent["schema"].(map[string]interface{}); ok {
+		expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
+		generated := GenerateExample(expanded)
+		if generatedMap, ok := generated.(map[string]interface{}); ok && len(generatedMap) != 0 {
+			t.Fatalf("Expected referenced bare object schema to generate an empty object before media-type override, got %#v", generatedMap)
+		}
+	}
+
+	bodyBytes, err := json.Marshal(mediaTypeExample)
+	if err != nil {
+		t.Fatalf("Failed to marshal media type example: %v", err)
+	}
+	body := string(bodyBytes)
+	if !strings.Contains(body, `"username":"a.b.c"`) || !strings.Contains(body, `"startDate":"2026-01-01"`) || !strings.Contains(body, `"endDate":"2026-01-21"`) {
+		t.Fatalf("Expected marshaled body to contain media-type example fields, got %s", body)
+	}
+}
