@@ -218,31 +218,35 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 									}
 
 									if ct, ok := contentTypes[cType].(map[string]interface{}); ok {
+										var example interface{}
 										if schema, ok := ct["schema"].(map[string]interface{}); ok {
 											expanded := ExpandSchema(spec, schema, map[string]bool{}, reqBodyContextSpec)
-											example := GenerateExample(expanded)
+											example = GenerateExample(expanded)
+										}
+										if mediaTypeExample := ExtractMediaTypeExample(ct); mediaTypeExample != nil {
+											example = mediaTypeExample
+										}
 
-											if cType == "application/json" {
-												bodyBytes, err := json.Marshal(example)
-												if err == nil {
-													curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
-												}
+										if cType == "application/json" && example != nil {
+											bodyBytes, err := json.Marshal(example)
+											if err == nil {
+												curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
 											}
-											if cType == "application/xml" || cType == "text/xml" {
-												if obj, ok := example.(map[string]interface{}); ok {
-													xml := XmlFromObject(obj)
-													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, xml)
-												}
+										}
+										if cType == "application/xml" || cType == "text/xml" {
+											if obj, ok := example.(map[string]interface{}); ok {
+												xml := XmlFromObject(obj)
+												curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, xml)
 											}
-											if cType == "application/x-www-form-urlencoded" || cType == "multipart/form-data" {
-												if obj, ok := example.(map[string]interface{}); ok {
-													var formParts []string
-													for k, v := range obj {
-														formParts = append(formParts, fmt.Sprintf("%s=%v", k, v))
-													}
-													formData := strings.Join(formParts, "&")
-													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, formData)
+										}
+										if cType == "application/x-www-form-urlencoded" || cType == "multipart/form-data" {
+											if obj, ok := example.(map[string]interface{}); ok {
+												var formParts []string
+												for k, v := range obj {
+													formParts = append(formParts, fmt.Sprintf("%s=%v", k, v))
 												}
+												formData := strings.Join(formParts, "&")
+												curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, formData)
 											}
 										}
 									}
@@ -475,6 +479,24 @@ func ExpandSchema(
 	}
 
 	return node
+}
+
+func ExtractMediaTypeExample(contentType map[string]interface{}) interface{} {
+	if example := contentType["example"]; example != nil {
+		return example
+	}
+
+	if examples, ok := contentType["examples"].(map[string]interface{}); ok {
+		for _, raw := range examples {
+			if exampleMap, ok := raw.(map[string]interface{}); ok {
+				if value := exampleMap["value"]; value != nil {
+					return value
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func GenerateExample(node *SchemaNode) interface{} {

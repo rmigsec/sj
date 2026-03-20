@@ -1,0 +1,24 @@
+openapi: 3.0.0
+info:
+  title: Request Body Media Type Example Test
+  version: 1.0.0
+paths:
+  /activity:
+    post:
+      summary: List forensic user activity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicListUserActivity'
+            example:
+              username: a.b.c
+              startDate: "2026-01-01"
+              endDate: "2026-01-21"
+      responses:
+        '200':
+          description: Success
+components:
+  schemas:
+    ForensicListUserActivity:
+      type: object
